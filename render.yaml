@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: runelite
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: "npm install"
+    startCommand: "node server.js"
+    healthCheckPath: /api/leaderboard
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false

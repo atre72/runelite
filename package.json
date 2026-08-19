@@ -1,0 +1,15 @@
+{
+  "name": "runelite-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RunElite: Global Championship — backend real. Usa Postgres (Neon) si hay DATABASE_URL, o un archivo local si no.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "pg": "^8.12.0"
+  }
+}
