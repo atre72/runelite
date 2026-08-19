@@ -1,0 +1,964 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>RunElite — Global Championship</title>
+
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0A0D10" />
+<link rel="icon" href="/icon-192.png" />
+
+<!-- iOS: Safari ignora el manifest para "Añadir a inicio", necesita estas etiquetas -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="RunElite" />
+<link rel="apple-touch-icon" href="/icon-192.png" />
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root{
+  --void:#0A0D10; --panel:#12171C; --panel2:#181F26; --line:#232B32;
+  --bone:#EDEAE3; --muted:#8B8F94;
+  --atacama:#D98C4A; --alpes:#8FC1D4; --amazonas:#4A8F5C;
+  --signal:#FF4438; --gold:#E8B84B;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--void);color:var(--bone);font-family:'Inter',sans-serif;}
+.f-display{font-family:'Big Shoulders Display',sans-serif;letter-spacing:.01em;font-weight:900;}
+.f-mono{font-family:'JetBrains Mono',monospace;}
+#shell{max-width:420px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--void);}
+header{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--void);}
+.logo{display:flex;align-items:center;gap:8px;font-size:20px;}
+main{flex:1;overflow-y:auto;padding-bottom:84px;}
+nav.bottom{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:420px;display:flex;justify-content:space-around;padding:8px 0;border-top:1px solid var(--line);background:var(--panel);z-index:40;}
+nav.bottom button{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;text-transform:uppercase;color:var(--muted);cursor:pointer;font-family:'JetBrains Mono',monospace;}
+nav.bottom button.active{color:var(--gold);}
+button{cursor:pointer;font-family:inherit;}
+input{font-family:'JetBrains Mono',monospace;}
+.card{border-radius:12px;background:var(--panel);border:1px solid var(--line);padding:16px;}
+.btn-gold{background:var(--gold);color:var(--void);border:none;border-radius:10px;padding:12px;font-family:'Big Shoulders Display',sans-serif;font-weight:700;font-size:16px;}
+.btn-outline{background:var(--panel2);color:var(--bone);border:1px solid var(--line);border-radius:10px;padding:10px;font-family:'Big Shoulders Display',sans-serif;font-weight:700;}
+.badge{font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:.03em;}
+.bar-track{width:100%;height:12px;border-radius:999px;background:var(--panel2);overflow:hidden;}
+.bar-fill{height:12px;border-radius:999px;transition:width .1s linear;}
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);color:var(--bone);padding:10px 16px;border-radius:10px;font-size:13px;z-index:60;max-width:90%;text-align:center;}
+.px{padding-left:18px;padding-right:18px;}
+input[type=text]{width:100%;background:var(--void);border:1px solid var(--line);color:var(--bone);border-radius:8px;padding:9px 10px;font-size:13px;}
+label.chk{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);}
+.spin{animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+@keyframes draw{to{stroke-dashoffset:0;}}
+a.dl{color:var(--gold);}
+</style>
+</head>
+<body>
+<div id="shell"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---------------------------------------------------------------------------
+// DATA
+// ---------------------------------------------------------------------------
+const T = { void:"#0A0D10", panel:"#12171C", panel2:"#181F26", line:"#232B32", bone:"#EDEAE3", muted:"#8B8F94",
+  atacama:"#D98C4A", alpes:"#8FC1D4", amazonas:"#4A8F5C", signal:"#FF4438", gold:"#E8B84B" };
+
+const ELEVATION_PATHS = {
+  atacama: "M0,60 L20,55 L40,58 L60,40 L80,45 L100,30 L120,35 L140,20 L160,25 L180,15 L200,22 L220,10 L240,18 L260,8 L280,15 L300,5",
+  alpes: "M0,70 L15,65 L30,50 L45,55 L60,25 L75,35 L90,10 L105,20 L120,5 L135,15 L150,8 L165,18 L180,3 L195,12 L210,6 L225,14 L240,2 L255,10 L270,4 L285,9 L300,1",
+  amazonas: "M0,45 L20,42 L40,48 L60,40 L80,46 L100,38 L120,44 L140,36 L160,42 L180,35 L200,41 L220,34 L240,40 L260,33 L280,39 L300,32",
+};
+
+const WORLDS = [
+  { id:"atacama", name:"Desierto de Atacama", biome:"Desierto extremo", color:T.atacama, icon:"sun", sponsor:"Garmin", difficulty:"Calor real + terreno seco", desc:"Bonificación de puntos si el GPS detecta temperaturas altas reales durante tu carrera." },
+  { id:"alpes", name:"Alpes Suizos", biome:"Alta montaña", color:T.alpes, icon:"mountain", sponsor:"Garmin", difficulty:"Desnivel + frío", desc:"Retos de inclinación pronunciada. La cadencia se valida contra el desnivel detectado." },
+  { id:"amazonas", name:"Selva Amazónica", biome:"Selva tropical", color:T.amazonas, icon:"trees", sponsor:"Nike", difficulty:"Humedad + resistencia", desc:"Puntos extra por correr bajo lluvia real detectada por GPS y clima local." },
+];
+
+function makeSplits(total){
+  const fr=[0.18,0.37,0.56,0.78,1];
+  return fr.map((f,i)=>({km:i+1, time_s: i===fr.length-1?total:Math.round(total*f)}));
+}
+// Ghosts anonimizados a propósito (ver nota legal sobre derechos de imagen de atletas reales).
+const GHOSTS = {
+  atacama: [ {id:"atc-a",name:"Ghost Récord Élite — Ruta Norte",time:178,badge:"Leyenda del Desierto"},
+             {id:"atc-b",name:"Ghost Récord Élite — Ruta Salar",time:191,badge:"Leyenda del Desierto"} ],
+  alpes: [ {id:"alp-a",name:"Ghost Récord Élite — Cresta Sur",time:224,badge:"Leyenda de los Alpes"},
+           {id:"alp-b",name:"Ghost Récord Élite — Glaciar Este",time:239,badge:"Leyenda de los Alpes"} ],
+  amazonas: [ {id:"amz-a",name:"Ghost Récord Élite — Sendero Río",time:165,badge:"Leyenda del Amazonas"},
+              {id:"amz-b",name:"Ghost Récord Élite — Dosel Alto",time:179,badge:"Leyenda del Amazonas"} ],
+};
+Object.values(GHOSTS).flat().forEach(g=>g.splits=makeSplits(g.time));
+
+// Calzado con afinidad a cada mundo — se ve reflejado en el avatar 3D del corredor.
+const SHOES = {
+  atacama: [ {id:"duna-x",name:"Duna Runner X",color:T.atacama}, {id:"std-a",name:"Zapatilla Estándar",color:T.muted} ],
+  alpes: [ {id:"cresta-pro",name:"Cresta Grip Pro",color:T.alpes}, {id:"std-b",name:"Zapatilla Estándar",color:T.muted} ],
+  amazonas: [ {id:"selva-flex",name:"Selva Trail Flex",color:T.amazonas}, {id:"std-c",name:"Zapatilla Estándar",color:T.muted} ],
+};
+
+const MARKET_ITEMS = [
+  {id:"skin-desert",name:"Skin Avatar — Corredor del Desierto",priceCredits:450,sponsor:null},
+  {id:"skin-alpine",name:"Skin Avatar — Alpinista de Élite",priceCredits:600,sponsor:null},
+  {id:"disc-garmin-shoes",name:"20% dcto. zapatillas trail",priceCredits:0,sponsor:"Garmin"},
+  {id:"disc-garmin-watch",name:"15% dcto. reloj GPS",priceCredits:0,sponsor:"Garmin"},
+  {id:"disc-nike",name:"10% dcto. indumentaria running",priceCredits:0,sponsor:"Nike"},
+];
+
+// ---------------------------------------------------------------------------
+// ANTI-CHEAT ENGINE
+// ---------------------------------------------------------------------------
+const MAX_HUMAN_SPEED_MS = 10.5;
+const MAX_GPS_JUMP_MS = 12.0;
+
+function haversine(a,b){
+  const R=6371000, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+function generateRun(cheat){
+  let lat=-23.65,lng=-70.4,t=0;
+  const points=[{lat,lng,t,elevation:50}];
+  for(let i=1;i<15;i++){
+    t+=15; lat+=0.00015+Math.random()*0.00006; lng+=0.00015+Math.random()*0.00006;
+    points.push({lat,lng,t,elevation:50+i});
+  }
+  let avgHr=128+Math.floor(Math.random()*35);
+  if(cheat){
+    if(Math.random()<0.5){
+      const idx=5+Math.floor(Math.random()*6);
+      points[idx]={...points[idx], lat:points[idx].lat+0.01, lng:points[idx].lng+0.008};
+    } else { avgHr=null; }
+  }
+  let distance_m=0;
+  for(let i=1;i<points.length;i++) distance_m+=haversine(points[i-1],points[i]);
+  const duration_s=points[points.length-1].t;
+  return {points,avgHr,distance_m,duration_s};
+}
+function validateActivity({points,avgHr,distance_m,duration_s}){
+  if(avgHr===null||avgHr===undefined) return {ok:false, reason:"Sin dato de frecuencia cardíaca"};
+  for(let i=1;i<points.length;i++){
+    const dt=points[i].t-points[i-1].t;
+    if(dt<=0) continue;
+    const speed=haversine(points[i-1],points[i])/dt;
+    if(speed>MAX_GPS_JUMP_MS) return {ok:false, reason:`Salto de GPS sospechoso (${speed.toFixed(1)} m/s entre dos puntos)`};
+  }
+  const avgSpeed=distance_m/duration_s;
+  if(avgSpeed>MAX_HUMAN_SPEED_MS) return {ok:false, reason:`Velocidad promedio imposible (${(avgSpeed*3.6).toFixed(1)} km/h)`};
+  return {ok:true, reason:null};
+}
+
+// ---------------------------------------------------------------------------
+// STORAGE (localStorage real del navegador — funciona abriendo el archivo o
+// alojándolo en cualquier hosting; el ranking es local a este navegador,
+// un ranking verdaderamente global entre distintas personas requiere backend)
+// ---------------------------------------------------------------------------
+const PROFILE_KEY="runelite_profile", ACTIVITIES_KEY="runelite_activities", LEADERBOARD_KEY="runelite_leaderboard_local";
+const DEVICE_ID_KEY="runelite_device_id";
+function getDeviceId(){
+  let id = localStorage.getItem(DEVICE_ID_KEY);
+  if(!id){ id = "dev_"+Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem(DEVICE_ID_KEY,id); }
+  return id;
+}
+let BACKEND_ONLINE = false; // se confirma al arrancar con un ping real al servidor
+async function apiGet(pathQS){
+  try{ const r = await fetch(pathQS); if(!r.ok) throw 0; return await r.json(); }catch(e){ return null; }
+}
+async function apiPost(path,body){
+  try{ const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); if(!r.ok) throw 0; return await r.json(); }catch(e){ return null; }
+}
+function defaultProfile(){
+  return { username:`corredor_${Math.floor(1000+Math.random()*9000)}`, subscribed:false, credits:200,
+    badges:[], device:{gps:false,hr:false}, bronceCompleted:{}, equippedShoe:{} };
+}
+function loadJSON(key,fallback){ try{ const raw=localStorage.getItem(key); return raw?JSON.parse(raw):fallback; }catch(e){ return fallback; } }
+function saveJSON(key,val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){ /* localStorage no disponible en este contexto */ } }
+
+// ---------------------------------------------------------------------------
+// ICONS (SVG inline, sin dependencias externas)
+// ---------------------------------------------------------------------------
+const ICONS = {
+  home:'<path d="M3 10L12 3l9 7"/><path d="M5 9v10h14V9"/>',
+  mapPin:'<circle cx="12" cy="10" r="3"/><path d="M12 21s7-6.5 7-11a7 7 0 10-14 0c0 4.5 7 11 7 11z"/>',
+  heart:'<path d="M12 21s-7-4.5-9.5-9C.5 8 2 4 6 4c2 0 4 1.5 6 5 2-3.5 4-5 6-5 4 0 5.5 4 3.5 8-2.5 4.5-9.5 9-9.5 9z"/>',
+  lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
+  unlock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 017-2.6"/>',
+  check:'<path d="M20 6L9 17l-5-5"/>', x:'<path d="M18 6L6 18M6 6l12 12"/>',
+  play:'<path d="M6 4l14 8-14 8V4z"/>', flag:'<path d="M5 3v18"/><path d="M5 4h11l-2 4 2 4H5"/>',
+  bag:'<rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7V5a4 4 0 018 0v2"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6"/>',
+  zap:'<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>', chevronLeft:'<path d="M15 18l-6-6 6-6"/>',
+  radio:'<circle cx="12" cy="12" r="2"/><path d="M4.9 4.9a10 10 0 000 14.1M19.1 4.9a10 10 0 010 14.1M7.8 7.8a5 5 0 000 8.4M16.2 7.8a5 5 0 010 8.4"/>',
+  award:'<circle cx="12" cy="8" r="6"/><path d="M9 13l-2 8 5-3 5 3-2-8"/>',
+  trophy:'<path d="M8 4h8v4a4 4 0 01-8 0V4z"/><path d="M8 4H4v2a4 4 0 004 4"/><path d="M16 4h4v2a4 4 0 01-4 4"/><path d="M10 14h4v3h-4z"/><path d="M7 21h10"/>',
+  gauge:'<path d="M12 12l4-4"/><circle cx="12" cy="12" r="9"/>',
+  card:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+  qr:'<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM19 14h2M14 19h2M19 19h2"/>',
+  alert:'<path d="M12 2L2 20h20L12 2z"/><path d="M12 9v5M12 17h.01"/>',
+  spinner:'<path d="M12 2a10 10 0 100 20 10 10 0 000-20z" opacity="0.25"/><path d="M12 2a10 10 0 0110 10"/>',
+  reset:'<path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/>',
+  history:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
+  mountain:'<path d="M3 20L9 8l4 6 2-3 6 9H3z"/>', sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  trees:'<path d="M8 3L4 9h3l-3 5h4v7h4v-7h4l-3-5h3z"/>',
+};
+function icon(name,{size=16,color="currentColor",cls=""}={}){
+  return `<svg class="${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||""}</svg>`;
+}
+function elevationSvg(path,color,height=80,animated=false){
+  const style = animated ? `style="stroke-dasharray:900;stroke-dashoffset:900;animation:draw 2.2s ease-out forwards;"` : "";
+  return `<svg viewBox="0 0 300 80" style="width:100%;height:${height}px;display:block;" preserveAspectRatio="none">
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" ${style}/>
+  </svg>`;
+}
+function badgeHtml(label,color){
+  return `<span class="badge" style="background:${color}22;color:${color};border:1px solid ${color}55;">${label}</span>`;
+}
+function fmtTime(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; }
+
+// ---------------------------------------------------------------------------
+// MOTOR 3D DE LA RUTA (Three.js) — un corredor de verdad, con su ghost visible
+// ---------------------------------------------------------------------------
+let raceScene = null;
+
+const WORLD_3D = {
+  atacama: { ground:"#3a2a17", sky:"#1a130b", amp:0.35, freq:0.55, decor:"cone", decorColor:"#B97A3A", decorCount:7 },
+  alpes:   { ground:"#1c2933", sky:"#0c1318", amp:1.3,  freq:0.9,  decor:"cone", decorColor:"#DDEAF0", decorCount:8 },
+  amazonas:{ ground:"#122417", sky:"#0a150d", amp:0.45, freq:1.2,  decor:"cylinder", decorColor:"#2F6B3C", decorCount:10 },
+};
+
+function buildWorldCurve(world){
+  const pts=[];
+  const cfg=WORLD_3D[world.id];
+  for(let i=0;i<12;i++){
+    const x = -7 + (14*i/11);
+    const y = Math.max(0, cfg.amp*Math.sin(x*cfg.freq) + cfg.amp*0.4);
+    const z = 0.4*Math.sin(x*0.5);
+    pts.push(new THREE.Vector3(x,y,z));
+  }
+  return new THREE.CatmullRomCurve3(pts);
+}
+
+function makeRunner(bodyColor, shoeColor, isGhost){
+  const group = new THREE.Group();
+  const opac = isGhost ? 0.55 : 1;
+  const bodyMat = new THREE.MeshStandardMaterial({ color:bodyColor, transparent:isGhost, opacity:opac });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.2,0.55,8), bodyMat);
+  body.position.y = 0.5;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15,10,10), bodyMat);
+  head.position.y = 0.92;
+  const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.1,0.3), new THREE.MeshStandardMaterial({ color:shoeColor, transparent:isGhost, opacity:opac }));
+  shoe.position.y = 0.12;
+  group.add(body,head,shoe);
+  return group;
+}
+
+function disposeRaceScene(){
+  if(!raceScene) return;
+  try{
+    raceScene.scene.traverse(o=>{
+      if(o.geometry) o.geometry.dispose();
+      if(o.material) o.material.dispose();
+    });
+    raceScene.renderer.dispose();
+  }catch(e){}
+  raceScene=null;
+}
+
+function initRaceScene(world, profile){
+  disposeRaceScene();
+  const canvasEl = document.getElementById("raceCanvas");
+  if(!canvasEl || typeof THREE==="undefined") return;
+  const cfg = WORLD_3D[world.id];
+  const w = canvasEl.width, h = canvasEl.height;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(cfg.sky);
+
+  const camera = new THREE.PerspectiveCamera(42, w/h, 0.1, 100);
+  camera.position.set(0, 4.5, 11);
+  camera.lookAt(0, 0.6, 0);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+  dir.position.set(5,8,5);
+  scene.add(dir);
+
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(24,8), new THREE.MeshStandardMaterial({ color: cfg.ground }));
+  ground.rotation.x = -Math.PI/2;
+  ground.position.y = -0.02;
+  scene.add(ground);
+
+  const curve = buildWorldCurve(world);
+  const trackGeo = new THREE.TubeGeometry(curve, 40, 0.55, 6, false);
+  const track = new THREE.Mesh(trackGeo, new THREE.MeshStandardMaterial({ color: world.color, opacity:0.35, transparent:true }));
+  scene.add(track);
+
+  for(let i=0;i<cfg.decorCount;i++){
+    const t = (i+0.5)/cfg.decorCount;
+    const p = curve.getPointAt(t);
+    const side = i%2===0 ? 1 : -1;
+    let mesh;
+    if(cfg.decor==="cone"){
+      mesh = new THREE.Mesh(new THREE.ConeGeometry(0.25+Math.random()*0.2, 0.8+Math.random()*0.6, 6), new THREE.MeshStandardMaterial({ color: cfg.decorColor }));
+    } else {
+      mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.9+Math.random()*0.5,6), new THREE.MeshStandardMaterial({ color: cfg.decorColor }));
+    }
+    mesh.position.set(p.x + side*(1.1+Math.random()*0.6), p.y + 0.3, p.z + side*0.3);
+    scene.add(mesh);
+  }
+
+  const shoeId = (profile.equippedShoe && profile.equippedShoe[world.id]) || SHOES[world.id][0].id;
+  const shoe = SHOES[world.id].find(s=>s.id===shoeId) || SHOES[world.id][0];
+
+  const userMesh = makeRunner(T.gold, shoe.color, false);
+  const ghostMesh = makeRunner(T.signal, T.signal, true);
+  scene.add(userMesh, ghostMesh);
+
+  const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias:true, alpha:false });
+  renderer.setSize(w,h,false);
+
+  raceScene = { renderer, scene, camera, curve, userMesh, ghostMesh };
+  updateRacePositions(0,0);
+}
+
+function updateRacePositions(userPct, ghostPct){
+  if(!raceScene) return;
+  const ut = Math.min(0.999, Math.max(0, userPct/100));
+  const gt = Math.min(0.999, Math.max(0, ghostPct/100));
+  const up = raceScene.curve.getPointAt(ut);
+  const gp = raceScene.curve.getPointAt(gt);
+  raceScene.userMesh.position.set(up.x, up.y, up.z + 0.4);
+  raceScene.ghostMesh.position.set(gp.x, gp.y, gp.z - 0.4);
+  raceScene.renderer.render(raceScene.scene, raceScene.camera);
+}
+
+// ---------------------------------------------------------------------------
+// STATE
+// ---------------------------------------------------------------------------
+let state = {
+  screen:"boot",
+  profile:null,
+  activities:[],
+  selectedWorldId:null,
+  selectedGhostId:null,
+  race:{status:"idle",progress:0,ghostProgress:0,userTime:null,checkpoints:[]},
+  toastMsg:"",
+  paywallMethod:null,
+  paywallBusy:false,
+  paywallError:"",
+  recordingOpen:false,
+  recordingBusy:false,
+  lastRecordResult:null,
+  canInstall:false,
+};
+let raceTimer=null, toastTimer=null;
+
+async function init(){
+  state.profile = loadJSON(PROFILE_KEY, defaultProfile());
+  state.activities = loadJSON(ACTIVITIES_KEY, []);
+  state.screen = state.profile.subscribed ? "home" : "paywall";
+  render();
+
+  // Intenta hablar con el backend real. Si no responde (p. ej. abriste el
+  // archivo directamente sin "node server.js"), la app sigue funcionando
+  // 100% local con localStorage, sin romperse.
+  const ping = await apiGet(`/api/profile?id=${getDeviceId()}`);
+  if(ping !== null){
+    BACKEND_ONLINE = true;
+    if(ping.profile){
+      state.profile = { ...state.profile, ...ping.profile };
+      saveProfile();
+    } else {
+      apiPost("/api/profile", { id:getDeviceId(), ...state.profile });
+    }
+    render();
+  }
+}
+function toast(msg){
+  state.toastMsg=msg;
+  clearTimeout(toastTimer);
+  render();
+  toastTimer=setTimeout(()=>{ state.toastMsg=""; render(); }, 3000);
+}
+function saveProfile(){
+  saveJSON(PROFILE_KEY, state.profile);
+  if(BACKEND_ONLINE) apiPost("/api/profile", { id:getDeviceId(), ...state.profile });
+}
+function saveActivities(){ saveJSON(ACTIVITIES_KEY, state.activities); }
+
+// ---------------------------------------------------------------------------
+// ACTIONS
+// ---------------------------------------------------------------------------
+function goScreen(s){ if(s!=="ghost") disposeRaceScene(); state.screen=s; render(); }
+function goWorld(id){ disposeRaceScene(); state.selectedWorldId=id; state.recordingOpen=false; state.lastRecordResult=null; state.screen="world"; render(); }
+
+function subscribe(provider){
+  state.profile.subscribed=true; saveProfile();
+  state.screen="home"; state.paywallMethod=null; state.paywallBusy=false;
+  render();
+  toast(`Pase de Atleta activado vía ${provider}. Bienvenido al campeonato.`);
+}
+function payWithCard(){
+  const number=document.getElementById("cardNumber").value;
+  const exp=document.getElementById("cardExp").value;
+  const cvc=document.getElementById("cardCvc").value;
+  if(number.replace(/\s/g,"").length<12 || !exp || cvc.length<3){
+    state.paywallError="Completa un número de tarjeta, vencimiento y CVC válidos.";
+    render(); return;
+  }
+  state.paywallError=""; state.paywallBusy=true; render();
+  setTimeout(()=>subscribe("Stripe"), 1200);
+}
+function payWithBinance(){
+  state.paywallBusy=true; render();
+  setTimeout(()=>subscribe("Binance Pay"), 1200);
+}
+
+function linkDevice(kind){
+  state.profile.device[kind]=true; saveProfile(); render();
+  toast(kind==="gps" ? "GPS vinculado vía Strava." : "Frecuencia cardíaca vinculada vía HealthKit.");
+}
+
+function toggleRecording(open){ state.recordingOpen=open; state.lastRecordResult=null; render(); }
+
+function recordActivity(){
+  const world = WORLDS.find(w=>w.id===state.selectedWorldId);
+  const cheat = document.getElementById("cheatToggle") ? document.getElementById("cheatToggle").checked : false;
+  state.recordingBusy=true; render();
+  setTimeout(()=>{
+    const run = generateRun(cheat);
+    const result = validateActivity(run);
+    const record = {
+      id:`${world.id}-${Date.now()}`, worldId:world.id, level:"bronce",
+      distanceM:Math.round(run.distance_m), durationS:run.duration_s, avgHr:run.avgHr,
+      validated:result.ok, rejectReason:result.reason, createdAt:Date.now(),
+    };
+    state.activities=[record, ...state.activities].slice(0,25); saveActivities();
+    if(result.ok){
+      state.profile.credits+=50;
+      state.profile.bronceCompleted[world.id]=true;
+      saveProfile();
+    }
+    state.recordingBusy=false; state.lastRecordResult=record; render();
+    if(!result.ok) toast("Actividad rechazada por el anti-cheat.");
+  }, 1300);
+}
+
+function startRace(ghostId){
+  const world = WORLDS.find(w=>w.id===state.selectedWorldId);
+  const ghost = GHOSTS[world.id].find(g=>g.id===ghostId);
+  if(!state.profile.device.gps || !state.profile.device.hr){
+    toast("Vincula GPS y frecuencia cardíaca en tu Perfil antes de competir."); return;
+  }
+  if(!state.profile.bronceCompleted[world.id]){
+    toast("Completa y valida una actividad de Nivel Bronce en este mundo primero."); return;
+  }
+  state.selectedGhostId=ghostId;
+  state.screen="ghost";
+  state.race={status:"running",progress:0,ghostProgress:0,userTime:null,checkpoints:[]};
+  render();
+  initRaceScene(world, state.profile);
+
+  const userPaceFactor = 0.85+Math.random()*0.3;
+  let t=0; const hit=new Set();
+  clearInterval(raceTimer);
+  raceTimer=setInterval(()=>{
+    t+=1;
+    const ghostProgress=Math.min(100,(t/ghost.time)*100);
+    const userProgress=Math.min(100,(t/(ghost.time*userPaceFactor))*100);
+
+    // Actualiza SOLO los nodos necesarios (barras + escena 3D) — no reconstruye el DOM.
+    const ubf=document.getElementById("userBarFill"), ubp=document.getElementById("userBarPct");
+    const gbf=document.getElementById("ghostBarFill"), gbp=document.getElementById("ghostBarPct");
+    if(ubf) ubf.style.width=userProgress+"%";
+    if(ubp) ubp.textContent=Math.round(userProgress)+"%";
+    if(gbf) gbf.style.width=ghostProgress+"%";
+    if(gbp) gbp.textContent=Math.round(ghostProgress)+"%";
+    updateRacePositions(userProgress, ghostProgress);
+
+    ghost.splits.forEach(s=>{
+      if(t>=s.time_s && !hit.has(s.km)){
+        hit.add(s.km);
+        const userSplit=Math.round(s.time_s*userPaceFactor);
+        const delta=userSplit-s.time_s;
+        state.race.checkpoints.push({km:s.km, ghostSplit:s.time_s, userSplit, delta});
+        const wrap=document.getElementById("checkpointsWrap");
+        if(wrap){
+          const row=document.createElement("div");
+          row.className="f-mono";
+          row.style.cssText=`display:flex;justify-content:space-between;font-size:11px;padding:6px 12px;border-radius:6px;background:${T.panel2};margin-top:6px;`;
+          row.innerHTML=`<span style="color:${T.muted}">Km ${s.km}</span><span>Ghost ${s.time_s}s · Tú ${userSplit}s</span><span style="color:${delta<=0?T.amazonas:T.signal}">${delta<=0?`-${Math.abs(delta)}s`:`+${delta}s`}</span>`;
+          wrap.appendChild(row);
+        }
+      }
+    });
+
+    if(userProgress>=100 || ghostProgress>=100){
+      clearInterval(raceTimer);
+      finishRace(world, ghost, userPaceFactor);
+    }
+  },90);
+}
+
+function finishRace(world, ghost, userPaceFactor){
+  const userTime=Math.round(ghost.time*userPaceFactor);
+  const won = userTime<=ghost.time;
+  state.race={...state.race, status: won?"won":"lost", progress:100, ghostProgress:100, userTime};
+  if(won){
+    if(!state.profile.badges.includes(ghost.badge)) state.profile.badges.push(ghost.badge);
+    state.profile.credits+=150;
+    saveProfile();
+    submitToLeaderboard(world,ghost,userTime);
+  }
+  render();
+  initRaceScene(world, state.profile);
+  updateRacePositions(100,100);
+}
+
+function equipShoe(worldId, shoeId){
+  state.profile.equippedShoe[worldId]=shoeId;
+  saveProfile();
+  render();
+  toast("Calzado actualizado para esta ruta.");
+}
+async function submitToLeaderboard(world,ghost,timeS){
+  const entry = {username:state.profile.username, world:world.name, ghost:ghost.name, timeS, date:Date.now()};
+  if(BACKEND_ONLINE){
+    const res = await apiPost("/api/leaderboard", entry);
+    if(res && res.ok){ toast("Tu tiempo se publicó en el Ranking Global (servidor real)."); return; }
+  }
+  const list = loadJSON(LEADERBOARD_KEY, []);
+  const next = [...list, entry].sort((a,b)=>a.timeS-b.timeS).slice(0,30);
+  saveJSON(LEADERBOARD_KEY, next);
+  toast(BACKEND_ONLINE ? "No se pudo publicar en el servidor, guardado localmente." : "Guardado en tu Ranking local (backend no conectado).");
+}
+function backFromGhost(){ clearInterval(raceTimer); disposeRaceScene(); state.screen="world"; render(); }
+function retryGhost(){ startRace(state.selectedGhostId); }
+
+function redeemItem(itemId){
+  const item = MARKET_ITEMS.find(i=>i.id===itemId);
+  if(state.profile.credits < item.priceCredits){ toast("Créditos insuficientes."); return; }
+  state.profile.credits -= item.priceCredits; saveProfile(); render();
+  toast(item.sponsor ? `Código canjeado: ${item.sponsor.toUpperCase()}-${Math.floor(1000+Math.random()*9000)}` : "Skin añadida a tu avatar.");
+}
+function cancelSubscription(){
+  state.profile.subscribed=false; saveProfile(); state.screen="paywall"; render();
+  toast("Pase de Atleta cancelado.");
+}
+function resetProgress(){
+  if(!confirm("¿Reiniciar todo el progreso guardado en este navegador?")) return;
+  const fresh=defaultProfile();
+  saveJSON(PROFILE_KEY,fresh); saveJSON(ACTIVITIES_KEY,[]);
+  state.profile=fresh; state.activities=[]; state.screen="paywall"; render();
+  toast("Progreso reiniciado.");
+}
+function saveUsername(){
+  const val = document.getElementById("usernameInput").value.trim();
+  if(val){ state.profile.username=val; saveProfile(); toast("Nombre de usuario actualizado."); render(); }
+}
+
+// ---------------------------------------------------------------------------
+// RENDER
+// ---------------------------------------------------------------------------
+function render(){
+  const app = document.getElementById("shell");
+  if(state.screen==="boot"){
+    app.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
+      <div class="f-mono" style="color:${T.muted};display:flex;flex-direction:column;align-items:center;gap:10px;font-size:12px;">
+        ${icon("spinner",{size:22,color:T.gold,cls:"spin"})}Cargando perfil de atleta...
+      </div></div>`;
+    return;
+  }
+
+  const p = state.profile;
+  app.innerHTML = `
+    <header>
+      <div class="logo f-display">${icon("zap",{color:T.gold})}<span>RUNELITE</span></div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button id="installBtn" onclick="installApp()" style="display:${state.canInstall?"flex":"none"};align-items:center;gap:5px;background:${T.gold};color:${T.void};border:none;border-radius:8px;padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;text-transform:uppercase;">${icon("home",{size:12,color:T.void})}Instalar</button>
+        ${p.subscribed ? `<div class="f-mono" style="display:flex;gap:10px;font-size:10px;color:${T.muted};align-items:center;">
+          <span style="display:flex;gap:4px;align-items:center;">${icon("mapPin",{size:11,color:p.device.gps?T.amazonas:T.signal})}GPS</span>
+          <span style="display:flex;gap:4px;align-items:center;">${icon("heart",{size:11,color:p.device.hr?T.amazonas:T.signal})}FC</span>
+          <span style="color:${T.gold}">${p.credits} cr</span>
+        </div>` : ""}
+      </div>
+    </header>
+    <main class="px">${renderScreen()}</main>
+    ${p.subscribed ? renderNav() : ""}
+    ${state.toastMsg ? `<div class="toast">${state.toastMsg}</div>` : ""}
+  `;
+}
+
+function renderNav(){
+  const items=[["home","Mundos","home",["home","world","ghost"]],["leaderboard","Ranking","trophy",["leaderboard"]],["market","Market","bag",["market"]],["profile","Perfil","user",["profile"]]];
+  return `<nav class="bottom">${items.map(([s,label,ic,group])=>`
+    <button class="${group.includes(state.screen)?'active':''}" onclick="goScreen('${s}')">${icon(ic,{size:18})}${label}</button>
+  `).join("")}</nav>`;
+}
+
+function renderScreen(){
+  switch(state.screen){
+    case "paywall": return renderPaywall();
+    case "home": return renderHome();
+    case "world": return renderWorld();
+    case "ghost": return renderGhost();
+    case "leaderboard": return renderLeaderboard();
+    case "market": return renderMarket();
+    case "profile": return renderProfile();
+    default: return "";
+  }
+}
+
+function renderPaywall(){
+  const feats=["Acceso a los 3 mundos: Atacama, Alpes, Amazonas","Ghost Mode contra tiempos de élite","Insignias de Leyenda coleccionables","Entrada automática al sorteo mensual","Descuentos de Garmin y Nike"];
+  return `
+  <div style="padding-top:24px;padding-bottom:40px;">
+    ${elevationSvg(ELEVATION_PATHS.alpes,T.gold,90,true)}
+    <h1 class="f-display" style="font-size:38px;line-height:0.95;margin-top:14px;">EL CAMPEONATO<br/>MUNDIAL <span style="color:${T.gold}">PERPETUO</span></h1>
+    <p style="font-size:14px;color:${T.muted};margin-top:10px;">Torneo global sin fin, en biomas extremos, contra tiempos de élite verificados por anti-cheat.</p>
+
+    <div class="card" style="margin-top:24px;">
+      <div style="display:flex;align-items:baseline;gap:4px;"><span class="f-display" style="font-size:36px;">$1</span><span style="font-size:13px;color:${T.muted}">/ mes</span></div>
+      <p class="f-mono" style="font-size:11px;text-transform:uppercase;color:${T.gold};margin-top:2px;">Pase de Atleta</p>
+      <ul style="list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:10px;">
+        ${feats.map(f=>`<li style="display:flex;gap:8px;font-size:14px;">${icon("check",{color:T.amazonas,cls:""})}<span>${f}</span></li>`).join("")}
+      </ul>
+
+      ${!state.paywallMethod ? `
+        <div style="margin-top:20px;display:flex;gap:12px;">
+          <button class="btn-gold" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;" onclick="state.paywallMethod='stripe';render();">${icon("card",{color:T.void})}TARJETA (STRIPE)</button>
+          <button class="btn-outline" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;" onclick="state.paywallMethod='binance';render();">${icon("qr")}BINANCE PAY</button>
+        </div>` : ""}
+
+      ${state.paywallMethod==="stripe" ? `
+        <div style="margin-top:20px;display:flex;flex-direction:column;gap:8px;">
+          <input type="text" id="cardNumber" placeholder="Número de tarjeta" />
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="cardExp" placeholder="MM/AA" style="width:50%;" />
+            <input type="text" id="cardCvc" placeholder="CVC" style="width:50%;" />
+          </div>
+          ${state.paywallError ? `<p class="f-mono" style="font-size:11px;color:${T.signal};display:flex;gap:4px;align-items:center;">${icon("alert",{size:12,color:T.signal})}${state.paywallError}</p>` : ""}
+          <button class="btn-gold" ${state.paywallBusy?"disabled":""} onclick="payWithCard()">${state.paywallBusy?"PROCESANDO...":"PAGAR $1"}</button>
+        </div>` : ""}
+
+      ${state.paywallMethod==="binance" ? `
+        <div style="margin-top:20px;text-align:center;">
+          <div style="margin:0 auto;width:120px;height:120px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:${T.void};border:1px solid ${T.line};">${icon("qr",{size:60,color:T.gold})}</div>
+          <p class="f-mono" style="font-size:11px;color:${T.muted};margin-top:8px;">Escanea con Binance Pay — 1.00 USDT</p>
+          <button class="btn-gold" style="width:100%;margin-top:12px;" ${state.paywallBusy?"disabled":""} onclick="payWithBinance()">${state.paywallBusy?"CONFIRMANDO...":"YA PAGUÉ"}</button>
+        </div>` : ""}
+
+      <p class="f-mono" style="font-size:10px;text-align:center;color:${T.muted};margin-top:12px;">Simulación de pago — cancela cuando quieras</p>
+    </div>
+  </div>`;
+}
+
+function renderHome(){
+  const p=state.profile;
+  return `
+  <div style="padding-top:20px;">
+    <p class="f-mono" style="font-size:10px;text-transform:uppercase;color:${T.muted};">Temporada 01 · ${p.username}</p>
+    <h2 class="f-display" style="font-size:30px;margin-top:4px;">MUNDOS ACTIVOS</h2>
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:16px;">
+      ${WORLDS.map(w=>`
+        <button onclick="goWorld('${w.id}')" style="text-align:left;border-radius:12px;overflow:hidden;background:${T.panel};border:1px solid ${T.line};padding:0;width:100%;">
+          <div style="background:${w.color}14;">${elevationSvg(ELEVATION_PATHS[w.id],w.color,60)}</div>
+          <div style="padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="display:flex;align-items:center;gap:8px;">${icon(w.icon,{color:w.color})}<h3 class="f-display" style="font-size:20px;">${w.name}</h3></div>
+              ${badgeHtml(w.sponsor,w.color)}
+            </div>
+            <p style="font-size:12px;color:${T.muted};margin-top:4px;">${w.difficulty}</p>
+            ${p.bronceCompleted[w.id] ? `<p class="f-mono" style="font-size:10px;color:${T.amazonas};margin-top:8px;display:flex;gap:4px;align-items:center;">${icon("check",{size:11,color:T.amazonas})}Nivel Bronce validado</p>` : ""}
+          </div>
+        </button>`).join("")}
+    </div>
+  </div>`;
+}
+
+function renderWorld(){
+  const p=state.profile;
+  const world = WORLDS.find(w=>w.id===state.selectedWorldId);
+  const bronceDone = !!p.bronceCompleted[world.id];
+  const deviceLinked = p.device.gps && p.device.hr;
+  const lr = state.lastRecordResult;
+
+  return `
+  <div style="padding-top:16px;">
+    <button onclick="goScreen('home')" class="f-mono" style="background:none;border:none;color:${T.muted};display:flex;gap:4px;align-items:center;font-size:12px;padding:0;">${icon("chevronLeft",{size:14})}MUNDOS</button>
+
+    <div class="card" style="margin-top:12px;background:${world.color}14;border-color:${world.color}44;">
+      ${elevationSvg(ELEVATION_PATHS[world.id],world.color,70)}
+      <h2 class="f-display" style="font-size:24px;margin-top:8px;">${world.name}</h2>
+      <p style="font-size:14px;margin-top:4px;">${world.desc}</p>
+    </div>
+
+    ${shoePickerHtml(world,p)}
+
+    <section class="card" style="margin-top:20px;">
+      <div style="display:flex;align-items:center;gap:8px;">${icon("gauge",{color:T.muted})}<h3 class="f-display" style="font-size:18px;">Nivel Bronce — Entrenamiento</h3></div>
+      <p style="font-size:12px;color:${T.muted};margin-top:4px;">Ritmo base. Cada carrera se valida con GPS + frecuencia cardíaca antes de contar.</p>
+
+      ${!deviceLinked ? `<p class="f-mono" style="font-size:10px;color:${T.signal};margin-top:8px;display:flex;gap:4px;align-items:center;">${icon("lock",{size:11,color:T.signal})}Vincula GPS y FC en tu Perfil para grabar</p>` : ""}
+
+      ${deviceLinked && !state.recordingOpen ? `
+        <button onclick="toggleRecording(true)" style="width:100%;margin-top:12px;padding:10px;border-radius:10px;font-family:'Big Shoulders Display',sans-serif;font-weight:700;font-size:14px;display:flex;justify-content:center;gap:8px;align-items:center;
+          background:${bronceDone?T.panel2:world.color};color:${bronceDone?T.amazonas:T.void};border:${bronceDone?`1px solid ${T.amazonas}`:"none"};">
+          ${bronceDone?icon("check",{color:T.amazonas})+"GRABAR OTRA CARRERA":icon("play",{color:T.void})+"INICIAR RETO"}
+        </button>` : ""}
+
+      ${deviceLinked && state.recordingOpen ? `
+        <div style="margin-top:12px;border-radius:10px;padding:12px;background:${T.panel2};border:1px solid ${T.line};">
+          <label class="chk"><input type="checkbox" id="cheatToggle"/> Simular datos falsos (para probar el anti-cheat)</label>
+          <button class="btn-gold" style="width:100%;margin-top:10px;display:flex;justify-content:center;gap:8px;align-items:center;" ${state.recordingBusy?"disabled":""} onclick="recordActivity()">
+            ${state.recordingBusy ? icon("spinner",{color:T.void,cls:"spin"})+"GRABANDO GPS Y PULSO..." : icon("play",{color:T.void})+"INICIAR GRABACIÓN"}
+          </button>
+        </div>` : ""}
+
+      ${lr ? `
+        <div class="card" style="margin-top:12px;background:${lr.validated?T.amazonas+"14":T.signal+"14"};border-color:${lr.validated?T.amazonas+"44":T.signal+"44"};">
+          <div class="f-display" style="font-size:15px;display:flex;gap:8px;align-items:center;">
+            ${lr.validated?icon("check",{color:T.amazonas}):icon("x",{color:T.signal})}${lr.validated?"Actividad validada":"Actividad rechazada"}
+          </div>
+          <p class="f-mono" style="font-size:12px;color:${T.muted};margin-top:4px;">${(lr.distanceM/1000).toFixed(2)} km · ${lr.durationS}s · FC ${lr.avgHr ?? "—"}</p>
+          ${!lr.validated ? `<p style="font-size:12px;color:${T.signal};margin-top:4px;">${lr.rejectReason}</p>` : `<p style="font-size:12px;color:${T.amazonas};margin-top:4px;">+50 créditos</p>`}
+          <button onclick="toggleRecording(false)" class="f-mono" style="background:none;border:none;color:${T.bone};text-decoration:underline;font-size:10px;margin-top:6px;padding:0;">Cerrar</button>
+        </div>` : ""}
+    </section>
+
+    <section class="card" style="margin-top:16px;opacity:${bronceDone?1:0.5};">
+      <div style="display:flex;align-items:center;gap:8px;">${icon("flag",{color:T.signal})}<h3 class="f-display" style="font-size:18px;">Nivel Élite — Extremo</h3></div>
+      <p style="font-size:12px;color:${T.muted};margin-top:4px;">Sprints de alta intensidad. Puntos extra por clima real detectado.</p>
+      ${!bronceDone ? `<p class="f-mono" style="font-size:10px;color:${T.signal};margin-top:8px;display:flex;gap:4px;align-items:center;">${icon("lock",{size:11,color:T.signal})}Completa y valida Nivel Bronce primero</p>` : ""}
+    </section>
+
+    <section style="margin-top:16px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">${icon("radio",{color:world.color})}<h3 class="f-display" style="font-size:18px;">Ghost Mode</h3></div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        ${GHOSTS[world.id].map(g=>{
+          const earned=p.badges.includes(g.badge);
+          return `<div class="card" style="background:${T.panel2};">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+              <div><p style="font-size:14px;font-weight:600;">${g.name}</p><p class="f-mono" style="font-size:12px;color:${T.muted};margin-top:4px;">Tiempo objetivo: ${fmtTime(g.time)}</p></div>
+              ${earned ? icon("award",{color:T.gold,size:18}) : ""}
+            </div>
+            <button onclick="startRace('${g.id}')" style="width:100%;margin-top:12px;padding:8px;border-radius:10px;background:${T.void};color:${world.color};border:1px solid ${world.color};font-family:'Big Shoulders Display',sans-serif;font-weight:700;font-size:14px;display:flex;justify-content:center;gap:8px;align-items:center;">
+              ${icon("play",{size:14,color:world.color})}COMPETIR CONTRA ESTE GHOST
+            </button>
+          </div>`;
+        }).join("")}
+      </div>
+    </section>
+  </div>`;
+}
+
+function shoePickerHtml(world, profile){
+  const equipped = profile.equippedShoe[world.id] || SHOES[world.id][0].id;
+  return `<section class="card" style="margin-top:20px;">
+    <h3 class="f-display" style="font-size:18px;">Calzado para esta ruta</h3>
+    <p style="font-size:12px;color:${T.muted};margin-top:4px;">Se ve reflejado en tu avatar durante el Ghost Mode 3D.</p>
+    <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+      ${SHOES[world.id].map(s=>`
+        <button onclick="equipShoe('${world.id}','${s.id}')" style="display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:20px;font-size:12px;background:${equipped===s.id?s.color+"22":T.panel2};border:1px solid ${equipped===s.id?s.color:T.line};color:${T.bone};">
+          <span style="width:10px;height:10px;border-radius:50%;background:${s.color};display:inline-block;"></span>${s.name}${equipped===s.id?icon("check",{size:12,color:s.color}):""}
+        </button>`).join("")}
+    </div>
+  </section>`;
+}
+
+function renderGhost(){
+  const world = WORLDS.find(w=>w.id===state.selectedWorldId);
+  const ghost = GHOSTS[world.id].find(g=>g.id===state.selectedGhostId);
+  const r = state.race;
+  const shoeId = state.profile.equippedShoe[world.id] || SHOES[world.id][0].id;
+  const shoe = SHOES[world.id].find(s=>s.id===shoeId) || SHOES[world.id][0];
+  return `
+  <div style="padding-top:16px;">
+    <button onclick="backFromGhost()" class="f-mono" style="background:none;border:none;color:${T.muted};display:flex;gap:4px;align-items:center;font-size:12px;padding:0;">${icon("chevronLeft",{size:14})}${world.name.toUpperCase()}</button>
+    <h2 class="f-display" style="font-size:24px;margin-top:10px;">VS. ${ghost.name}</h2>
+    <p class="f-mono" style="font-size:12px;color:${T.muted};margin-top:4px;">GPS + FC activos · Calzado: <span style="color:${shoe.color}">${shoe.name}</span></p>
+
+    <div class="card" style="margin-top:14px;padding:6px;">
+      <canvas id="raceCanvas" width="380" height="200" style="width:100%;height:200px;border-radius:8px;display:block;"></canvas>
+      <div style="display:flex;justify-content:space-between;padding:6px 6px 0;font-size:10px;" class="f-mono">
+        <span style="color:${T.gold}">● Tú</span><span style="color:${T.signal}">● ${ghost.name}</span>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:16px;">
+      ${raceBarShell("TÚ","userBar",T.gold,r.progress)}
+      ${raceBarShell("GHOST","ghostBar",T.signal,r.ghostProgress)}
+    </div>
+
+    <div style="margin-top:20px;">
+      <p class="f-mono" style="font-size:10px;text-transform:uppercase;color:${T.muted};margin-bottom:8px;">Splits por km</p>
+      <div id="checkpointsWrap">${r.checkpoints.map(c=>checkpointRowHtml(c)).join("")}</div>
+    </div>
+
+    <p id="raceStatusText" class="f-mono" style="font-size:12px;text-align:center;color:${T.muted};margin-top:20px;${r.status!=="running"?"display:none;":""}">Carrera en curso...</p>
+
+    <div id="raceResult">${(r.status==="won"||r.status==="lost") ? resultCardHtml(r,ghost) : ""}</div>
+  </div>`;
+}
+function raceBarShell(label,idPrefix,color,initial){
+  return `<div>
+    <div class="f-mono" style="display:flex;justify-content:space-between;font-size:10px;text-transform:uppercase;color:${T.muted};margin-bottom:4px;"><span>${label}</span><span id="${idPrefix}Pct">${Math.round(initial)}%</span></div>
+    <div class="bar-track"><div id="${idPrefix}Fill" class="bar-fill" style="width:${initial}%;background:${color};"></div></div>
+  </div>`;
+}
+function checkpointRowHtml(c){
+  return `<div class="f-mono" style="display:flex;justify-content:space-between;font-size:11px;padding:6px 12px;border-radius:6px;background:${T.panel2};margin-top:6px;">
+    <span style="color:${T.muted}">Km ${c.km}</span><span>Ghost ${c.ghostSplit}s · Tú ${c.userSplit}s</span>
+    <span style="color:${c.delta<=0?T.amazonas:T.signal}">${c.delta<=0?`-${Math.abs(c.delta)}s`:`+${c.delta}s`}</span></div>`;
+}
+function resultCardHtml(r,ghost){
+  return `<div class="card" style="margin-top:20px;text-align:center;border-color:${r.status==="won"?T.gold:T.line};">
+    ${r.status==="won" ? `
+      ${icon("award",{size:32,color:T.gold})}
+      <h3 class="f-display" style="font-size:20px;margin-top:8px;">¡SUPERASTE AL GHOST!</h3>
+      <p style="font-size:14px;color:${T.muted};margin-top:4px;">Tiempo: ${fmtTime(r.userTime)}</p>
+      <div style="margin-top:12px;display:flex;justify-content:center;">${badgeHtml(ghost.badge+" — desbloqueada",T.gold)}</div>
+      <p class="f-mono" style="font-size:10px;color:${T.amazonas};margin-top:12px;">+150 créditos · Publicado en tu Ranking</p>
+    ` : `
+      ${icon("x",{size:32,color:T.signal})}
+      <h3 class="f-display" style="font-size:20px;margin-top:8px;">EL GHOST GANÓ ESTA VEZ</h3>
+      <p style="font-size:14px;color:${T.muted};margin-top:4px;">Tu tiempo: ${fmtTime(r.userTime)}</p>
+    `}
+    <button class="btn-gold" style="width:100%;margin-top:16px;" onclick="retryGhost()">REINTENTAR</button>
+  </div>`;
+}
+
+async function renderLeaderboardScreen(){
+  const container = document.getElementById("leaderboardMount");
+  if(!container) return;
+  let rows, source;
+  if(BACKEND_ONLINE){
+    const res = await apiGet("/api/leaderboard");
+    if(res && res.rows){ rows = res.rows; source = "servidor"; }
+  }
+  if(!rows){ rows = loadJSON(LEADERBOARD_KEY, []); source = "local"; }
+  container.innerHTML = `
+    <div class="card" style="margin-top:12px;display:flex;gap:12px;align-items:center;background:${T.gold}14;border-color:${T.gold}44;">
+      ${icon("trophy",{size:22,color:T.gold})}
+      <p style="font-size:12px;">${source==="servidor" ? "Ranking global real — compartido entre todos los que usan este servidor." : "Backend no conectado: mostrando tu ranking guardado en este navegador."}</p>
+    </div>
+    ${rows.length===0 ? `<p class="f-mono" style="font-size:12px;color:${T.muted};margin-top:16px;">Aún nadie ha vencido a un Ghost. Sé el primero.</p>` : ""}
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">
+      ${rows.map((r,i)=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;border-radius:10px;padding:12px 16px;background:${T.panel};border:1px solid ${T.line};">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span class="f-display" style="font-size:18px;width:20px;color:${i<3?T.gold:T.muted};">${i+1}</span>
+            <div><p style="font-size:14px;font-weight:600;">${r.username}</p><p class="f-mono" style="font-size:10px;color:${T.muted};">${r.world} · ${r.ghost}</p></div>
+          </div>
+          <span class="f-mono" style="font-size:14px;">${fmtTime(r.timeS)}</span>
+        </div>`).join("")}
+    </div>`;
+}
+function renderLeaderboard(){
+  setTimeout(renderLeaderboardScreen, 0);
+  return `<div style="padding-top:20px;">
+    <h2 class="f-display" style="font-size:30px;">RANKING</h2>
+    <div id="leaderboardMount"><p class="f-mono" style="font-size:12px;color:${T.muted};margin-top:16px;">Cargando...</p></div>
+  </div>`;
+}
+
+function renderMarket(){
+  const p=state.profile;
+  return `
+  <div style="padding-top:20px;">
+    <h2 class="f-display" style="font-size:30px;">MARKETPLACE</h2>
+    <p style="font-size:14px;color:${T.muted};margin-top:4px;">Tu saldo: <span style="color:${T.gold}">${p.credits} créditos</span></p>
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:12px;">
+      ${MARKET_ITEMS.map(item=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;border-radius:10px;padding:12px 16px;background:${T.panel};border:1px solid ${T.line};">
+          <div><p style="font-size:14px;font-weight:600;">${item.name}</p>
+            <p class="f-mono" style="font-size:10px;color:${T.muted};margin-top:2px;">${item.priceCredits>0?`${item.priceCredits} créditos`:"Canje gratis (Pase)"}${item.sponsor?` · patrocina ${item.sponsor}`:""}</p></div>
+          <button onclick="redeemItem('${item.id}')" class="f-display" style="background:${T.gold};color:${T.void};border:none;border-radius:8px;padding:8px 12px;font-weight:700;font-size:12px;">CANJEAR</button>
+        </div>`).join("")}
+    </div>
+  </div>`;
+}
+
+function renderProfile(){
+  const p=state.profile;
+  return `
+  <div style="padding-top:20px;">
+    <h2 class="f-display" style="font-size:30px;">PERFIL</h2>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <input type="text" id="usernameInput" value="${p.username}" style="flex:1;" />
+      <button class="btn-outline" onclick="saveUsername()">Guardar</button>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <p class="f-mono" style="font-size:10px;text-transform:uppercase;color:${T.gold};">Pase de Atleta — Activo</p>
+      <p style="font-size:12px;color:${T.muted};margin-top:4px;">$1/mes · ${p.credits} créditos disponibles</p>
+      <button onclick="cancelSubscription()" class="f-mono" style="background:none;border:none;color:${T.signal};text-decoration:underline;font-size:11px;margin-top:8px;padding:0;">Cancelar suscripción</button>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h3 class="f-display" style="font-size:18px;">Verificación anti-trampas</h3>
+      <p style="font-size:12px;color:${T.muted};margin-top:4px;">Necesaria para grabar actividades y competir en Ghost Mode.</p>
+      ${deviceRow("mapPin","GPS + Cadencia","Vía Strava",p.device.gps,"gps")}
+      ${deviceRow("heart","Frecuencia cardíaca","Vía Apple HealthKit",p.device.hr,"hr")}
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h3 class="f-display" style="font-size:18px;">Insignias de Leyenda</h3>
+      ${p.badges.length===0 ? `<p style="font-size:12px;color:${T.muted};margin-top:8px;">Aún no has vencido a ningún Ghost.</p>` :
+        `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">${p.badges.map(b=>badgeHtml(b,T.gold)).join("")}</div>`}
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div style="display:flex;align-items:center;gap:8px;">${icon("history",{color:T.muted})}<h3 class="f-display" style="font-size:18px;">Historial de actividades</h3></div>
+      ${state.activities.length===0 ? `<p style="font-size:12px;color:${T.muted};margin-top:8px;">Sin actividades registradas todavía.</p>` : ""}
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+        ${state.activities.map(a=>`
+          <div class="f-mono" style="display:flex;justify-content:space-between;font-size:11px;padding:8px 12px;border-radius:6px;background:${T.panel2};">
+            <span>${a.worldId} · ${(a.distanceM/1000).toFixed(2)}km</span>${a.validated?icon("check",{size:14,color:T.amazonas}):icon("x",{size:14,color:T.signal})}
+          </div>`).join("")}
+      </div>
+    </div>
+
+    <button class="btn-outline" style="width:100%;margin-top:16px;display:flex;justify-content:center;gap:8px;align-items:center;color:${T.muted};" onclick="resetProgress()">${icon("reset",{size:13})}Reiniciar progreso (demo)</button>
+  </div>`;
+}
+function deviceRow(ic,label,detail,linked,kind){
+  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid ${T.line};">
+    <div style="display:flex;align-items:center;gap:12px;">${icon(ic,{color:linked?T.amazonas:T.muted})}<div><p style="font-size:14px;">${label}</p><p class="f-mono" style="font-size:10px;color:${T.muted};">${detail}</p></div></div>
+    ${linked ? `<span class="f-mono" style="font-size:10px;color:${T.amazonas};display:flex;gap:4px;align-items:center;">${icon("unlock",{size:12,color:T.amazonas})}Vinculado</span>`
+      : `<button onclick="linkDevice('${kind}')" class="f-display" style="background:${T.panel2};color:${T.bone};border:1px solid ${T.line};border-radius:8px;padding:6px 12px;font-weight:700;font-size:12px;">Vincular</button>`}
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// PWA — registro del service worker + botón "Instalar app"
+// ---------------------------------------------------------------------------
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+let deferredInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  state.canInstall = true;
+  render();
+});
+async function installApp() {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  state.canInstall = false;
+  render();
+}
+window.addEventListener("appinstalled", () => {
+  toast("RunElite instalada. Búscala en tu pantalla de inicio.");
+});
+
+init();
+</script>
+</body>
+</html>
